@@ -1,126 +1,383 @@
-# Test-Automation-Framework
+# Test Automation Framework
 
-不少录友感觉 冲大厂的开发岗会比较难，但又想去大厂工作。
+一个基于 `pytest + requests + YAML + Allure` 的接口自动化测试项目，适合学习接口自动化框架的基本设计，也可以作为小型项目模板继续扩展。
 
-测开是一个选择，大厂测开的薪资和 开发基本是差不太多。
+项目当前已经包含：
 
-又有录友问：那测开好还是开发好？
+- 单接口测试
+- 业务场景测试
+- YAML 数据驱动
+- 接口关联提取
+- 自定义动态参数
+- Allure 测试报告
+- 本地 Mock 服务
+- 日志记录
+- 数据库断言能力
 
-我相信如果有能力冲 开发的录友 就不会问这个问题了吧。
+## 技术栈
 
-我只能说，如果自己能力或者学历不太行，想去大厂，测开相对来说 门槛低很多。
+- Python 3.12+
+- pytest
+- requests
+- PyYAML
+- jsonpath
+- allure-pytest
+- Flask（用于本地 mock 服务）
 
-之前星球里就有不少录友冲测开，在项目方向都是用开发岗的项目，来面试的。
+## 项目结构
 
-这次[知识星球](https://www.programmercarl.com/other/kstar.html)里给大家提供了专门准对测开的项目，**带大家从零开始手撸一个基于 Pytest 的自动化测试框架**。
+```text
+Test-Automation-Framework-main/
+├─ base/                   # 核心执行逻辑，请求编排、业务场景编排
+├─ common/                 # 通用工具：发请求、断言、日志、读写 YAML、数据库连接
+├─ conf/                   # 配置文件
+├─ data/                   # 测试数据、SQL、CSV、Excel
+├─ mock_server/            # 本地 mock 接口服务
+├─ report/                 # 测试报告输出目录
+├─ testcase/               # 测试用例
+│  ├─ Single interface/    # 单接口测试
+│  ├─ ProductManager/      # 商品管理相关接口测试
+│  └─ Business interface/  # 业务场景测试
+├─ conftest.py             # 全局前后置处理
+├─ extract.yaml            # 接口关联提取结果
+├─ pytest.ini              # pytest 配置
+├─ run.py                  # 测试执行入口
+└─ pyproject.toml          # 项目依赖配置
+```
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-47-24.jpg)
+## 框架执行流程
 
-项目在星球里已经发布了三个月了，不少星球录友已经用了这个项目。
+这个项目的自动化测试流程可以概括为：
 
-这三个月期间，我们有陆续完善这个项目，这才正式在公众号发公布。
+```text
+启动 pytest
+-> 读取测试文件
+-> 读取 YAML 用例数据
+-> 替换动态参数
+-> 发送接口请求
+-> 校验响应结果
+-> 提取关联数据到 extract.yaml
+-> 生成 Allure 报告
+```
 
-本项目是使用python语言开发。
+对应的核心文件如下：
 
-也有录友会想，我转冲测开 是不是还要学习一下python？
+- `run.py`：项目入口，调用 `pytest` 并生成报告
+- `testcase/.../*.py`：测试入口文件
+- `common/readyaml.py`：读取测试用例 YAML
+- `base/apiutil.py`：统一处理请求、提取、断言
+- `common/sendrequest.py`：底层发送 HTTP 请求
+- `common/assertions.py`：统一断言逻辑
+- `common/debugtalk.py`：动态参数函数
+- `testcase/conftest.py`：登录前置、日志前后置
 
-其实python很简单， 如果有C++或者Java基础，python的语法知识 两三天也就学的差不多了。
+## 环境准备
 
-测试框架通常与具体公司的业务密切相关，本项目专栏将重点介绍通用的框架设计思路和技术实现，帮助你掌握构建测试框架的核心原理和方法。
+### 1. 安装 Python
 
-## 一、接口测试的本质：功能测试的一部分
+建议使用：
 
-很多初学者在听到“接口测试”时，可能会感到困惑，认为这是一个完全独立于功能测试之外的测试类型。
+- Python 3.12 运行主项目
+- Python 3.13 运行 `mock_server/api_server` 时也可以参考其独立配置
 
-实际上，接口测试的本质仍然是功能测试。它只是将测试的对象从用户界面转移到了应用程序接口（API）上。
+如果你只是在本仓库里学习和跑主测试流程，优先保证主项目的 Python 环境可用即可。
 
-换句话说，我们不再需要通过UI与系统交互，而是直接通过接口发送请求、接收响应，并验证响应结果是否符合预期。
+### 2. 安装依赖
 
-## 二、从接口文档入手：测试用例的设计与实现
+使用 `uv`：
 
-接口测试的第一步，从来都是获取接口文档。一个完整的接口文档通常包含以下几部分信息：
+```bash
+uv sync
+```
 
-* 接口名称
-* 接口地址
-* 请求方法（GET, POST, PUT, DELETE等）
-* 请求头信息
-* 请求参数（必选参数与可选参数）
-* 返回值及其数据结构
+或者使用 `pip`：
 
-测试用例的设计围绕着如何验证接口的功能展开。我们通常会从以下几个方面入手：
+```bash
+pip install -e .
+```
 
-1、 单接口测试：验证某一个接口在不同参数组合下的行为是否符合预期。测试点包括：
+如果你要单独启动 mock 服务，也可以进入对应目录安装依赖：
 
-* **正向测试**：使用正确的参数进行请求，验证返回值是否符合预期。
-* **反向测试**：使用错误或异常参数进行请求，验证接口是否能正确处理异常情况。
-* **边界测试**：例如对于要求固定长度的参数（如身份证号），测试其在不同长度下的响应情况。
+```bash
+cd mock_server/api_server
+pip install -e .
+```
 
-2. 业务逻辑测试：验证多个接口之间的协同工作。
+### 3. 安装 Allure 命令行工具
 
-例如，商品下单流程涉及多个接口，如库存检查、订单创建、支付确认等。这些接口之间存在依赖关系，测试时需要保证每个步骤的返回值都正确传递给下一个接口。
+项目中 Python 依赖只包含 `allure-pytest`，如果你希望本地打开 Allure 页面，还需要额外安装 Allure CLI。
 
-## 三、接口调试与自动化：从Postman到持续集成
+安装完成后，确保下面命令可用：
 
-在正式编写自动化测试脚本之前，手动调试接口是不可或缺的一步。
+```bash
+allure --version
+```
 
-工具如Postman、JMeter等可以帮助我们快速验证接口的功能。
+## 配置说明
 
-通过这些工具，我们可以确认接口是否正常工作，参数是否正确传递，以及返回值是否符合预期。
+主配置文件在 `conf/config.ini`。
 
-自动化测试的实现通常是将手动测试的步骤脚本化，并在代码中实现。
+重点配置项：
 
-例如，使用Python的requests库，我们可以轻松地编写自动化测试脚本，并将这些脚本集成到持续集成（CI）系统中，如Jenkins、GitLab CI等。
+```ini
+[api_envi]
+host = http://127.0.0.1:8787
+```
 
-通过CI，我们可以设定每日定时执行测试，并将测试结果推送到团队的沟通工具（如钉钉、Slack）中，确保所有成员都能及时了解到项目的健康状态。
+这里的 `host` 默认指向本地 mock 服务，所以在没有真实后端环境时，也能先跑通整个流程。
 
-## 项目专栏
+报告类型配置：
 
-接口测试是软件测试的一个重要组成部分，也是确保系统稳定性与可靠性的重要手段。
+```ini
+[REPORT_TYPE]
+type = allure
+```
 
-我们将深入探讨如何通过代码实现接口测试的自动化，并逐步搭建一个完善的接口测试框架，帮助你在项目中更高效地进行测试工作。
+支持：
 
-项目专栏在「简历写法」 下给大家列出来，指出项目在简历上应该突出什么：
+- `allure`
+- `tm`
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-48-26.jpg)
+另外，`conf/setting.py` 中也定义了超时时间、报告目录、日志目录等基础配置。
 
+## 先启动 Mock 服务
 
-在给出具体的简历写法：
+默认测试地址是 `http://127.0.0.1:8787`，所以执行测试前，建议先启动本地 mock 服务。
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-48-54.jpg)
+在 `mock_server/api_server` 目录下运行：
 
-这种测试框架的项目，已经要凸显出 性能优化的点：
+```bash
+python base/flask_service.py
+```
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-49-21.jpg)
+启动成功后，接口会监听：
 
-环境配置，很多录友做项目，配置环境，第一步就卡助了，专栏给出详细的操作步骤：
+```text
+http://127.0.0.1:8787
+```
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-49-44.jpg)
+项目里已经内置了一批模拟接口，例如：
 
-项目代码看不懂怎么办？
+- `/dar/user/login`
+- `/dar/user/addUser`
+- `/dar/user/updateUser`
+- `/dar/user/deleteUser`
+- `/dar/user/queryUser`
+- `/coupApply/cms/goodsList`
+- `/coupApply/cms/productDetail`
+- `/coupApply/cms/placeAnOrder`
 
-专栏有专门一个章节，帮助大家 梳理项目代码的逻辑，各个模块的数据流如下：
+## 如何运行测试
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-50-07.jpg)
+### 方式一：运行入口脚本
 
-做完该项目，面试中大概率会有哪些面试问题，以及如何回答，也列出好了：
+```bash
+python run.py
+```
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-50-31.jpg)
+当 `REPORT_TYPE = allure` 时，脚本会：
 
-**专栏中的项目面试题都掌握的话，这个项目在面试中基本没问题**。
+1. 执行 `pytest`
+2. 把结果输出到 `report/temp`
+3. 复制 `environment.xml`
+4. 调用 `allure serve ./report/temp`
 
-当然项目专栏会对本项目代码做详细的讲解：
+### 方式二：直接运行 pytest
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-50-55.jpg)
+```bash
+pytest -s -v ./testcase
+```
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-51-17.jpg)
+如果你想手动生成 Allure 结果：
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-51-40.jpg)
+```bash
+pytest -s -v --alluredir=./report/temp ./testcase --clean-alluredir
+```
 
-最后如果大家想把这个项目做的更有深度，项目专栏最后一栏【项目优化】给大家指明 可以继续优化的点：
+再手动打开报告：
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-52-04.jpg)
+```bash
+allure serve ./report/temp
+```
 
-## 获取本项目专栏
+## 用例是怎么组织的
 
-**本文档仅为星球内部专享，大家可以加入[知识星球](https://www.programmercarl.com/other/kstar.html)里获取，在星球置顶一**。
+项目采用 Python 测试文件 + YAML 数据文件分离的方式。
 
+以单接口测试为例：
+
+- 测试入口：`testcase/Single interface/test_debug_api.py`
+- 测试数据：`testcase/Single interface/addUser.yaml`
+
+测试函数通过 `pytest.mark.parametrize` 读取 YAML 中的多条数据，把每个场景拆成一个独立用例执行。
+
+## YAML 用例格式
+
+一个典型的 YAML 用例分为两部分：
+
+- `baseInfo`：接口公共信息
+- `testCase`：具体测试场景
+
+示例：
+
+```yaml
+- baseInfo:
+    api_name: 新增用户
+    url: /dar/user/addUser
+    method: POST
+    header:
+      Content-Type: application/x-www-form-urlencoded;charset=UTF-8
+  testCase:
+    - case_name: 正常新增用户
+      data:
+        username: testadduser
+        password: test123456
+        role_id: 123456789
+        dates: "2023-12-31"
+        phone: 13800000000
+        token: ${get_extract_data(token)}
+      validation:
+        - contains: { "status_code": 200 }
+        - contains: { "msg": "新增成功" }
+```
+
+## 接口关联是怎么实现的
+
+项目通过 `extract.yaml` 实现接口之间的数据传递。
+
+例如：
+
+1. 登录接口执行后，从响应中提取 `token`
+2. 把 `token` 写入 `extract.yaml`
+3. 其它接口通过 `${get_extract_data(token)}` 读取并复用这个值
+
+登录前置在 `testcase/conftest.py` 中定义，整个测试 session 开始时会先自动登录。
+
+## 动态参数能力
+
+`common/debugtalk.py` 中封装了一些动态函数，可以在 YAML 中直接调用，例如：
+
+```yaml
+token: ${get_extract_data(token)}
+timeStamp: ${timestamp()}
+orderNumber: ${get_extract_data(orderNumber)}
+```
+
+常见用途：
+
+- 读取上一个接口提取的数据
+- 生成时间戳
+- 读取 CSV 数据
+- 做简单加密处理
+
+## 断言能力
+
+项目当前支持的断言类型主要有：
+
+- `contains`：包含断言
+- `eq`：相等断言
+- `ne`：不相等断言
+- `rv`：任意字段值断言
+- `db`：数据库断言
+
+示例：
+
+```yaml
+validation:
+  - contains: { "status_code": 200 }
+  - eq: { "msg": "登录成功" }
+```
+
+## 业务场景测试
+
+除了单接口测试，项目还支持业务链路测试。
+
+例如 `testcase/Business interface/BusinessScenario.yml` 中演示了：
+
+1. 获取商品列表
+2. 获取商品详情
+3. 提交订单
+4. 订单支付
+5. 校验订单状态
+
+这个流程通过提取 `goodsIds`、`orderNumber`、`userId` 等数据，把多个接口串联起来。
+
+## 日志与报告
+
+### 日志
+
+日志输出目录：
+
+```text
+logs/
+```
+
+项目会自动按日期生成日志文件，并清理过期日志。
+
+### 报告
+
+Allure 原始结果目录：
+
+```text
+report/temp/
+```
+
+Allure HTML 报告目录：
+
+```text
+report/allureReport/
+```
+
+TMReport 目录：
+
+```text
+report/tmreport/
+```
+
+## 初学者推荐阅读顺序
+
+如果你刚接触这个项目，建议按下面顺序阅读源码：
+
+1. `testcase/Single interface/test_debug_api.py`
+2. `testcase/Single interface/addUser.yaml`
+3. `common/readyaml.py`
+4. `base/apiutil.py`
+5. `common/sendrequest.py`
+6. `common/assertions.py`
+7. `testcase/conftest.py`
+8. `common/debugtalk.py`
+
+这样最容易看懂一个测试用例是如何从 YAML 一步步执行到最终断言完成的。
+
+## 常见问题
+
+### 1. 为什么运行时报连接失败？
+
+先检查 `conf/config.ini` 中的 `host` 是否可访问。  
+如果你使用默认配置，需要先启动本地 mock 服务。
+
+### 2. 为什么没有打开 Allure 报告？
+
+通常是因为本机没有安装 Allure CLI，或者 `allure` 命令没有加入环境变量。
+
+### 3. 为什么 token 为空？
+
+先确认登录接口是否执行成功，再检查 `extract.yaml` 中是否成功写入了 `token`。
+
+### 4. 为什么报告里有旧数据？
+
+项目启动时会自动清理 `report/temp` 和 `extract.yaml`，但如果你是手动执行部分命令，也可以先手动确认目录是否已清空。
+
+## 后续可以扩展的方向
+
+- 接口重试机制
+- 更完善的数据库校验
+- 多环境切换
+- 更严格的 schema 校验
+- CI/CD 集成
+- 钉钉或企业微信通知
+- 自定义测试标签和分层运行
+
+## License
+
+本项目遵循仓库中的 `LICENSE` 文件。
